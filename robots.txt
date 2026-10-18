@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /option-a/
+
+Sitemap: https://www.gomeenconsultancy.com/sitemap.xml
