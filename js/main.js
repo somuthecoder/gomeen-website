@@ -21,86 +21,116 @@
   $$('a', menu).forEach(function (a) { a.addEventListener('click', closeMenu); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
 
-  // Nav shadow on scroll
-  var nav = $('#nav');
-  function onScroll() { nav.classList.toggle('scrolled', window.scrollY > 8); }
+  // Nav shadow + reading progress
+  var nav = $('#nav'), bar = $('#progress');
+  function onScroll() {
+    nav.classList.toggle('scrolled', window.scrollY > 8);
+    var max = doc.scrollHeight - window.innerHeight;
+    bar.style.width = (max > 0 ? Math.min(100, window.scrollY / max * 100) : 0) + '%';
+  }
   onScroll();
   window.addEventListener('scroll', onScroll, { passive: true });
 
-  // Active link highlighting
-  var links = $$('.menu a[href^="#"]:not(.btn)');
+  // Active link highlighting (primary menu sections + legal TOC)
+  var secMap = { top: 'top', how: 'how', solutions: 'solutions', families: 'families', resources: 'resources', about: 'about', contact: 'contact',
+                 solution: 'solutions', problem: 'top', question: 'top', dashboard: 'solutions', insurance: 'solutions', property: 'solutions',
+                 file: 'solutions', generations: 'families', why: 'families', faq: 'resources' };
+  function setActive(links, key) {
+    links.forEach(function (l) {
+      var h = l.getAttribute('href');
+      l.classList.toggle('active', h === '#' + key || h === 'index.html#' + key);
+    });
+  }
   if ('IntersectionObserver' in window) {
+    var links = $$('.menu a:not(.btn)');
     var spy = new IntersectionObserver(function (entries) {
       entries.forEach(function (en) {
-        if (en.isIntersecting) {
-          links.forEach(function (l) { l.classList.toggle('active', l.getAttribute('href') === '#' + en.target.id); });
-        }
+        if (en.isIntersecting && secMap[en.target.id]) setActive(links, secMap[en.target.id]);
       });
     }, { rootMargin: '-45% 0px -50% 0px' });
-    links.forEach(function (l) { var s = $(l.getAttribute('href')); if (s) spy.observe(s); });
-  }
+    $$('main section[id]').forEach(function (s) { spy.observe(s); });
 
-  // Count-up
-  function count(el) {
-    var target = +el.dataset.count, suffix = el.dataset.suffix || '', t0 = null, dur = 1400;
-    function step(ts) {
-      if (!t0) t0 = ts;
-      var p = Math.min((ts - t0) / dur, 1), eased = 1 - Math.pow(1 - p, 3);
-      el.textContent = Math.round(target * eased) + (p === 1 ? suffix : '');
-      if (p < 1) requestAnimationFrame(step);
+    var toc = $$('.toc a');
+    if (toc.length) {
+      var tspy = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (en.isIntersecting) toc.forEach(function (l) { l.classList.toggle('active', l.getAttribute('href') === '#' + en.target.id); });
+        });
+      }, { rootMargin: '-30% 0px -60% 0px' });
+      $$('.doc article').forEach(function (a) { tspy.observe(a); });
     }
-    requestAnimationFrame(step);
   }
-  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  $$('[data-count]').forEach(function (el) { el.textContent = el.dataset.count + (el.dataset.suffix || ''); });
 
-  // Reveal on scroll (+ stagger, counters, skill bars)
+  // Reveal on scroll
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   $$('.reveal').forEach(function (el, i) { el.style.setProperty('--d', (i % 4) * 0.08 + 's'); });
-  var counted = false;
   if ('IntersectionObserver' in window && !reduce) {
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (en) {
         if (!en.isIntersecting) return;
         en.target.classList.add('in');
-        if (en.target.classList.contains('stat') && !counted) { counted = true; $$('[data-count]').forEach(count); }
         io.unobserve(en.target);
       });
     }, { threshold: 0.15 });
     $$('.reveal').forEach(function (el) { io.observe(el); });
-    var bio = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('in'); bio.unobserve(en.target); } });
-    }, { threshold: 0.3 });
-    $$('.bars').forEach(function (b) { bio.observe(b); });
   } else {
-    $$('.reveal,.bars').forEach(function (el) { el.classList.add('in'); });
+    $$('.reveal').forEach(function (el) { el.classList.add('in'); });
   }
 
-  // Project filter
-  var fbtns = $$('.f');
-  fbtns.forEach(function (b) {
-    b.addEventListener('click', function () {
-      var f = b.dataset.f;
-      fbtns.forEach(function (x) { var on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-selected', String(on)); });
-      $$('.proj, tbody tr').forEach(function (el) { el.hidden = !(f === 'all' || el.dataset.t === f); });
-    });
-  });
+  // Open the FAQ item when linked to directly (e.g. #faq-nri)
+  function openHashFaq() {
+    var t = location.hash && $(location.hash);
+    if (t && t.tagName === 'DETAILS') t.open = true;
+  }
+  window.addEventListener('hashchange', openHashFaq);
+  openHashFaq();
 
-  // Contact form -> mailto
+  // Family readiness check
+  var quiz = $('#quiz');
+  if (quiz) {
+    var out = $('#quizOut'), msg = $('#quizMsg'), cta = $('#quizCta');
+    quiz.addEventListener('change', function () {
+      var answered = 0, unsure = 0;
+      for (var i = 1; i <= 5; i++) {
+        var c = quiz.querySelector('input[name=q' + i + ']:checked');
+        if (c) { answered++; if (c.value === '0') unsure++; }
+      }
+      if (answered < 5) {
+        msg.textContent = answered + ' of 5 answered.';
+        cta.hidden = true; out.classList.remove('gap');
+        return;
+      }
+      out.classList.toggle('gap', unsure > 0);
+      cta.hidden = unsure === 0;
+      msg.textContent = unsure === 0
+        ? 'Your family appears well informed today. A periodic review keeps it that way.'
+        : unsure + ' of 5 answers were “I am not sure”. Your family may have a financial-information gap.';
+    });
+  }
+
+  // Contact form -> WhatsApp (no email address supplied for Gomeen yet)
   var form = $('#form'), note = $('#formNote');
-  form.addEventListener('submit', function (e) {
-    e.preventDefault();
-    var ok = true;
-    $$('[required]', form).forEach(function (f) {
-      var bad = !f.value.trim() || (f.type === 'email' && !/^\S+@\S+\.\S+$/.test(f.value));
-      f.classList.toggle('invalid', bad);
-      if (bad) ok = false;
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var ok = true;
+      $$('[required]', form).forEach(function (f) {
+        var bad = f.type === 'checkbox' ? !f.checked : !f.value.trim();
+        f.classList.toggle('invalid', bad);
+        if (bad) ok = false;
+      });
+      var em = form.elements.email;
+      if (em.value && !/^\S+@\S+\.\S+$/.test(em.value)) { em.classList.add('invalid'); ok = false; } else { em.classList.remove('invalid'); }
+      if (!ok) { note.textContent = 'Please complete the highlighted fields and tick the consent box.'; return; }
+      var d = new FormData(form);
+      var text = 'Hello Gomeen, I would like to book a family wealth discussion.\n\n' +
+        'Name: ' + d.get('name') + '\nMobile: ' + d.get('phone') + '\nEmail: ' + (d.get('email') || '-') +
+        '\nLocation: ' + (d.get('city') || '-') + '\nPreferred contact: ' + d.get('method') +
+        '\nInterest: ' + d.get('topic') + '\n\n' + (d.get('msg') || '');
+      window.open('https://wa.me/919600168982?text=' + encodeURIComponent(text), '_blank', 'noopener');
+      note.textContent = 'Opening WhatsApp with your message…';
     });
-    if (!ok) { note.textContent = 'Please complete the highlighted fields.'; return; }
-    var d = new FormData(form);
-    var body = 'Name: ' + d.get('name') + '\nEmail: ' + d.get('email') + '\nOrganisation: ' + (d.get('org') || '-') + '\n\n' + d.get('msg');
-    location.href = 'mailto:rgopalr75@outlook.com?subject=' + encodeURIComponent('Enquiry: ' + d.get('topic')) + '&body=' + encodeURIComponent(body);
-    note.textContent = 'Opening your email app…';
-  });
+  }
 
-  $('#yr').textContent = new Date().getFullYear();
+  var yr = $('#yr'); if (yr) yr.textContent = new Date().getFullYear();
 })();
